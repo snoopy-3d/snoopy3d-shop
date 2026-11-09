@@ -17,14 +17,17 @@
 
 ## Уведомления владельцу
 
-После записи заявки `place-order` отдельно обращается к Resend и Telegram. Чтобы включить каналы, добавьте секреты в Supabase Edge Functions → Secrets.
+После записи заявки `place-order` отдельно отправляет письмо и сообщение в Telegram. Чтобы включить каналы, добавьте секреты в Supabase Edge Functions → Secrets.
 
 | Канал | Секреты | Получатель |
 | --- | --- | --- |
-| Email | `RESEND_API_KEY`, `MAIL_FROM` | `snoopy_3d@bk.ru` |
+| Email через Mail.ru | `MAIL_SMTP_PASSWORD` | `snoopy_3d@bk.ru` |
+| Email через Resend | `RESEND_API_KEY`, `MAIL_FROM` | `snoopy_3d@bk.ru` |
 | Telegram | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Чат, указанный в `TELEGRAM_CHAT_ID` |
 
-`MAIL_FROM` задаёт адрес отправителя на домене, подтверждённом в Resend. Для Telegram бот должен иметь доступ к указанному чату. Храните токены только в секретах Supabase.
+Для Mail.ru создайте [пароль внешнего приложения](https://help.mail.ru/mail/login/mailer/#password) для `snoopy_3d@bk.ru` с правом «Только отправка писем в Почте». Сохраните его как `MAIL_SMTP_PASSWORD`. Функция отправляет письма через `smtp.mail.ru:465` по TLS от этого адреса на этот же адрес.
+
+Если `MAIL_SMTP_PASSWORD` отсутствует, функция использует Resend при наличии его настроек. `MAIL_FROM` задаёт адрес отправителя на подтверждённом домене. Для Telegram бот должен иметь доступ к указанному чату. Храните пароли и токены только в секретах Supabase.
 
 Ответ функции содержит номер заявки и статусы `notification_status` и `telegram_status`. Значение `not_configured` означает, что канал пропущен из-за отсутствующей настройки. `accepted` означает, что запрос принят сервисом. Проверяйте доставку по фактическому письму и сообщению с тем же номером. При сбое отправки заявка остаётся в базе.
 
