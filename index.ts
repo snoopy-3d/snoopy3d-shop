@@ -1,5 +1,6 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import nodemailer from "npm:nodemailer@10.4.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "https://snoopy-3d.github.io",
@@ -24,7 +25,48 @@ function clean(value: unknown, max = 200): string {
     : "";
 }
 
-async function notifyOwner(orderNumber: string, details: unknown) {
+const ownerEmail = "snoopy_3d@bk.ru";
+
+async function sendViaMailRu(orderNumber: string, subject: string, text: string, password: string) {
+  try {
+    const transport = nodemailer.createTransport({
+      host: "smtp.mail.ru",
+      port: 465,
+      secure: true,
+      auth: { user: ownerEmail, pass: password },
+      connectionTimeout: 5_000,
+      greetingTimeout: 5_000,
+      socketTimeout: 8_000,
+      disableFileAccess: true,
+      disableUrlAccess: true,
+    });
+    const message = await transport.sendMail({
+      from: { name: "SNOOPY3D SHOP", address: ownerEmail },
+      to: ownerEmail,
+      subject,
+      text,
+    });
+    if (message.accepted.length === 1) {
+      console.info("Order email accepted by Mail.ru", orderNumber);
+      return "accepted";
+    }
+    console.error("Order email recipient rejected by Mail.ru", orderNumber);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error &&
+      typeof error.code === "string" && /^[A-Z0-9_]{1,30}$/.test(error.code)
+      ? error.code : "SMTP_ERROR";
+    console.error("Order email failed via Mail.ru", orderNumber, code);
+  }
+  return "failed";
+}
+
+async function notifyOwner(orderNumber: string, details: Record<string, unknown>) {
+  const kind = details.service ? "Заявка на услугу" : "Заказ товара";
+  const subject = "SNOOPY3D — " + kind.toLowerCase() + " " + orderNumber;
+  const text = kind + " " + orderNumber + "\n\n" + JSON.stringify(details, null, 2);
+  const smtpPassword = Deno.env.get("MAIL_SMTP_PASSWORD");
+  if (smtpPassword) return sendViaMailRu(orderNumber, subject, text, smtpPassword);
+
   const key = Deno.env.get("RESEND_API_KEY");
   const from = Deno.env.get("MAIL_FROM");
   if (!key || !from) return "not_configured";
@@ -36,12 +78,7 @@ async function notifyOwner(orderNumber: string, details: unknown) {
         "Content-Type": "application/json",
         "Idempotency-Key": "order/" + orderNumber + "/owner",
       },
-      body: JSON.stringify({
-        from,
-        to: ["snoopy_3d@bk.ru"],
-        subject: "SNOOPY3D — заявка " + orderNumber,
-        text: "Новая заявка " + orderNumber + "\n\n" + JSON.stringify(details, null, 2),
-      }),
+      body: JSON.stringify({ from, to: [ownerEmail], subject, text }),
       signal: AbortSignal.timeout(5000),
     });
     if (response.ok && (await response.json()).id) return "accepted";
