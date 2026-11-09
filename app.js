@@ -5,6 +5,7 @@ let products = [];
 let catalogMessage = 'Загружаем каталог…';
 let cart = readCart();
 let category = 'Все', sb = null, session = null, adminTab = 'products';
+let recoveryUserId = null;
 
 function readCart() {
   try {
@@ -42,10 +43,24 @@ if (data?.error || !data?.order_number) throw new Error(data?.error || 'Серв
 if(!service){cart={};saveCart()}close();notify(`Заявка ${data?.order_number||''} принята!`)}catch(err){notify(err.message||'Ошибка отправки')}finally{btn.disabled=false}}}
 async function init() {
   render();
+  const expiredLink = new URLSearchParams(location.hash.slice(1)).get('error_code') === 'otp_expired';
   try {
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) throw new Error('Supabase is not configured');
     const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
     sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    sb.auth.onAuthStateChange((event, nextSession) => {
+      session = nextSession;
+      if (session?.user.id !== recoveryUserId) recoveryUserId = null;
+      if (event === 'PASSWORD_RECOVERY' && session?.user.email?.toLowerCase() === adminEmail) {
+        recoveryUserId = session.user.id;
+        passwordResetForm();
+      }
+    });
+    if (expiredLink) {
+      history.replaceState(null, '', location.pathname + location.search);
+      login();
+      notify('Ссылка восстановления истекла. Запросите новую.');
+    }
     const { data: authData, error: authError } = await sb.auth.getSession();
     if (!authError) session = authData.session;
     const { data, error } = await sb.from('products').select('*').eq('active', true).order('created_at', { ascending: false });
@@ -60,6 +75,55 @@ async function init() {
   render();
   saveCart();
 }
+function passwordResetForm() {
+  if (!recoveryUserId || session?.user.id !== recoveryUserId) return login();
+  close();
+  modal('Новый пароль SUPER ADMIN', `<p class="note">Установите новый пароль для ${adminEmail}.</p>
+    <form id="passwordResetForm">
+      <div class="field"><label for="newPassword">Новый пароль</label><input id="newPassword" name="password" type="password" autocomplete="new-password" minlength="8" required></div>
+      <div class="field"><label for="confirmPassword">Повторите пароль</label><input id="confirmPassword" name="confirmation" type="password" autocomplete="new-password" minlength="8" required></div>
+      <p class="note" role="status"></p>
+      <button class="primary full">Сохранить пароль</button>
+    </form>`);
+  $('#passwordResetForm').onsubmit = async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const fields = new FormData(form);
+    const message = form.querySelector('[role="status"]');
+    const password = String(fields.get('password'));
+    if (!recoveryUserId || session?.user.id !== recoveryUserId) {
+      message.textContent = 'Сеанс восстановления истёк. Откройте новую ссылку.';
+      return;
+    }
+    if (password !== fields.get('confirmation')) {
+      message.textContent = 'Пароли не совпадают.';
+      return;
+    }
+    const button = form.querySelector('button');
+    button.disabled = true;
+    message.textContent = '';
+    try {
+      const { error } = await sb.auth.updateUser({ password });
+      if (error) {
+        message.textContent = error.code === 'same_password' || error.code === 'weak_password'
+          ? 'Выберите другой, более надёжный пароль.'
+          : 'Не удалось сохранить пароль. Проверьте срок действия ссылки восстановления.';
+        return;
+      }
+    } catch {
+      message.textContent = 'Не удалось связаться с Supabase. Попробуйте ещё раз.';
+      return;
+    } finally {
+      button.disabled = false;
+    }
+    recoveryUserId = null;
+    await sb.auth.signOut({ scope: 'local' }).catch(() => {});
+    session = null;
+    login();
+    notify('Пароль сохранён. Войдите с новым паролем.');
+  };
+}
+
 function login() {
   modal('SUPER ADMIN', `<p class="note">Вход для ${adminEmail}. Используйте пароль сайта.</p>
     <form id="loginForm">
@@ -132,4 +196,4 @@ try {
 }})}else{$('#adminContent').innerHTML='<p>Услуги редактируются в исходном шаблоне. Управление услугами из базы — следующий этап.</p>'}}
 function productEditor(p){let existing=galleryImages(p),pending=[],cover=existing[0]||null;const maxPhotos=12;modal(p?'Редактировать товар':'Добавить товар',`<form id="productForm"><div class="field"><label>Название *</label><input name="name" value="${esc(p?.name||'')}" required></div><div class="field"><label>Категория *</label><input name="category" value="${esc(p?.category||'Фигурки')}" required></div><div class="field"><label>Цена, ₽ *</label><input name="price" type="number" min="0" step="1" value="${p?.price??''}" required></div><div class="field"><label>Описание</label><textarea name="description">${esc(p?.description||'')}</textarea></div><div class="field"><label>Фотографии товара с устройства</label><input name="photos" type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif"><small>До 12 фотографий, каждая до 5 МБ. Выбирайте несколько сразу или добавляйте по очереди.</small><div id="galleryPreview" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:14px"></div></div><div class="field"><label><input type="checkbox" name="active" style="width:auto" ${p?.active!==false?'checked':''}> Показывать в магазине</label></div><button class="primary full" type="submit">Сохранить</button></form>`);const fileInput=$('#productForm [name="photos"]');function preview(){const entries=[...existing.map(url=>({url,kind:'old'})),...pending.map(x=>({url:x.url,kind:'new'}))];if(!entries.some(x=>x.url===cover))cover=entries[0]?.url||null;$('#galleryPreview').innerHTML=entries.map((x,i)=>`<div style="background:var(--panel2);border-radius:12px;padding:6px;text-align:center"><img src="${esc(x.url)}" alt="Фото ${i+1}" style="width:100%;height:85px;object-fit:cover;border-radius:8px"><button type="button" data-cover-photo="${i}" style="font-size:12px;padding:4px">${x.url===cover?'★ Главное':'☆ Главное'}</button><button type="button" data-remove-photo="${i}" style="font-size:12px;padding:4px;color:#ff7895">✕ Убрать</button></div>`).join('')||'<small>Добавьте фотографии</small>';$('#galleryPreview').querySelectorAll('[data-cover-photo]').forEach(b=>b.onclick=()=>{cover=entries[Number(b.dataset.coverPhoto)].url;preview()});$('#galleryPreview').querySelectorAll('[data-remove-photo]').forEach(b=>b.onclick=()=>{const x=entries[Number(b.dataset.removePhoto)];if(x.kind==='old')existing=existing.filter(url=>url!==x.url);else{const i=pending.findIndex(y=>y.url===x.url);if(i!==-1){URL.revokeObjectURL(pending[i].url);pending.splice(i,1)}}preview()})}fileInput.onchange=()=>{const files=[...fileInput.files];if(existing.length+pending.length+files.length>maxPhotos){notify('Максимум 12 фотографий');fileInput.value='';return}for(const file of files){if(!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type)||file.size>5*1024*1024){notify('Нужны JPG, PNG, WebP или GIF до 5 МБ');continue}pending.push({file,url:URL.createObjectURL(file)})}fileInput.value='';preview()};preview();$('#productForm').onsubmit=async e=>{e.preventDefault();const form=e.target,btn=form.querySelector('[type="submit"]'),f=new FormData(form);btn.disabled=true;try{if(!sb)throw Error('Нет подключения к Supabase');const uploaded=[];for(const x of pending){const ext=({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif'})[x.file.type],path=crypto.randomUUID()+'.'+ext;const {error}=await sb.storage.from('product-images').upload(path,x.file,{contentType:x.file.type,upsert:false});if(error)throw error;uploaded.push({url:sb.storage.from('product-images').getPublicUrl(path).data.publicUrl,local:x.url})}let images=[...existing,...uploaded.map(x=>x.url)];const main=uploaded.find(x=>x.local===cover)?.url||cover;if(images.includes(main))images=[main,...images.filter(x=>x!==main)];const v={name:f.get('name'),category:f.get('category'),price:Number(f.get('price')),description:f.get('description'),images,image_url:images[0]||null,active:f.has('active')};const {error}=p?await sb.from('products').update(v).eq('id',p.id):await sb.from('products').insert(v);if(error)throw error;const result=await sb.from('products').select('*').eq('active',true).order('created_at',{ascending:false});if(!result.error)products=result.data||[];render();notify('Товар и фотографии сохранены');admin()}catch(err){notify('Ошибка: '+(err.message||'Неизвестная ошибка'))}finally{btn.disabled=false}}}
 document.addEventListener('click',e=>{const image=e.target.closest('[data-photo-gallery]');if(image)showProductGallery(image.dataset.photoGallery);const a=e.target.closest('[data-add]');if(a)add(a.dataset.add);const c=e.target.closest('[data-cat]');if(c){category=c.dataset.cat;render()}const q=e.target.closest('[data-qty]');if(q){cart[q.dataset.qty]=Math.max(0,(cart[q.dataset.qty]||0)+Number(q.dataset.delta));saveCart();showCart()}if(e.target.closest('[data-close]')||e.target.id==='backdrop')close();const svc=e.target.closest('[data-service]');if(svc)orderForm(svc.dataset.service);const tab=e.target.closest('[data-tab]');if(tab){adminTab=tab.dataset.tab;admin()}});
-$('#search').oninput=render;$('#cartBtn').onclick=showCart;$('#checkoutBtn').onclick=()=>orderForm();$('#adminBtn').onclick=()=>session?admin():login();$('#requestBtn').onclick=()=>orderForm('Индивидуальный проект');$('#menuBtn').onclick=()=>$('#mobileMenu').classList.toggle('hidden');$('#themeBtn').onclick=()=>$('#mobileMenu').classList.toggle('hidden');$('#themeSwatches').innerHTML=Object.entries(themes).map(([id,[color]])=>`<button data-theme="${id}" style="background:${color}" title="${id}"></button>`).join('');document.addEventListener('click',e=>{const t=e.target.closest('[data-theme]');if(t)theme(t.dataset.theme)});document.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'){$('#glow').style.left=e.clientX+'px';$('#glow').style.top=e.clientY+'px'}});init();
+$('#search').oninput=render;$('#cartBtn').onclick=showCart;$('#checkoutBtn').onclick=()=>orderForm();$('#adminBtn').onclick=()=>recoveryUserId?passwordResetForm():session?admin():login();$('#requestBtn').onclick=()=>orderForm('Индивидуальный проект');$('#menuBtn').onclick=()=>$('#mobileMenu').classList.toggle('hidden');$('#themeBtn').onclick=()=>$('#mobileMenu').classList.toggle('hidden');$('#themeSwatches').innerHTML=Object.entries(themes).map(([id,[color]])=>`<button data-theme="${id}" style="background:${color}" title="${id}"></button>`).join('');document.addEventListener('click',e=>{const t=e.target.closest('[data-theme]');if(t)theme(t.dataset.theme)});document.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'){$('#glow').style.left=e.clientX+'px';$('#glow').style.top=e.clientY+'px'}});init();
