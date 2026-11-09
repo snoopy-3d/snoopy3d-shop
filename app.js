@@ -18,5 +18,121 @@ async function init(){if(SUPABASE_URL&&SUPABASE_ANON_KEY){try{const {createClien
 function login(){modal('SUPER ADMIN',`<p class="note">Доступ только владельцу snoopy.3d@bk.ru. Пароль сайта — отдельный от пароля почты.</p><form id="loginForm"><div class="field"><label>Email</label><input type="email" name="email" value="snoopy.3d@bk.ru" required></div><div class="field"><label>Пароль сайта</label><input type="password" name="password" required></div><button class="primary full">Войти</button></form>`);$('#loginForm').onsubmit=async e=>{e.preventDefault();if(!sb)return notify('Сначала подключите Supabase');const f=new FormData(e.target);if(f.get('email')!=='snoopy.3d@bk.ru')return notify('Доступ запрещён');const {data,error}=await sb.auth.signInWithPassword({email:f.get('email'),password:f.get('password')});if(error)return notify('Ошибка входа');session=data.session;admin()}}
 async function admin(){if(!sb||!session)return login();const {data:allowed}=await sb.rpc('is_admin');if(!allowed)return notify('Нет прав администратора');modal('SNOOPY3D · SUPER ADMIN',`<div class="admin-tabs"><button data-tab="products" class="${adminTab==='products'?'active':''}">Товары</button><button data-tab="orders" class="${adminTab==='orders'?'active':''}">Заказы</button><button data-tab="services" class="${adminTab==='services'?'active':''}">Услуги</button><button id="logout">Выход</button></div><div id="adminContent">Загрузка...</div>`);$('#logout').onclick=async()=>{await sb.auth.signOut();session=null;close()};loadAdmin()}
 async function loadAdmin(){if(adminTab==='products'){const {data,error}=await sb.from('products').select('*').order('created_at',{ascending:false});if(error)return $('#adminContent').textContent='Нет доступа';$('#adminContent').innerHTML=`<button class="primary" id="newProduct">+ Добавить товар</button>${(data||[]).map(p=>`<div class="admin-row"><span>${esc(p.name)} · ${money(p.price)} ${p.active?'':'(скрыт)'}</span><div><button data-edit="${esc(p.id)}">Изменить</button> <button data-delete="${esc(p.id)}">Удалить</button></div></div>`).join('')}`;$('#newProduct').onclick=()=>productEditor();$('#adminContent').querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{const p=data.find(p=>String(p.id)===b.dataset.delete);if(!p||!confirm('Удалить товар «'+p.name+'»?'))return;const {error}=await sb.from('products').delete().eq('id',p.id);if(error)return notify('Ошибка удаления: '+error.message);products=products.filter(x=>String(x.id)!==String(p.id));render();loadAdmin()});$('#adminContent').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>productEditor(data.find(p=>String(p.id)===b.dataset.edit)))}else if(adminTab==='orders'){const {data,error}=await sb.from('orders').select('*').order('created_at',{ascending:false}).limit(100);if(error)return $('#adminContent').textContent='Нет доступа';$('#adminContent').innerHTML=(data||[]).map(o=>`<div class="admin-row"><div><b>${esc(o.order_number)}</b> · ${esc(o.email)}<br><small>${esc(o.name||'Без имени')} · ${esc(o.phone||'')} · ${esc(o.telegram||'')}</small><br><small>${esc(JSON.stringify(o.items))}</small></div><select data-order="${esc(o.id)}">${['Новый','Согласование','В работе','Готов','Завершён','Отменён'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}</select></div>`).join('')||'Заказов пока нет';$('#adminContent').querySelectorAll('[data-order]').forEach(el=>el.onchange=async()=>{const {error}=await sb.from('orders').update({status:el.value}).eq('id',el.dataset.order);notify(error?'Не удалось обновить':'Статус сохранён')})}else{$('#adminContent').innerHTML='<p>Услуги редактируются в исходном шаблоне. Управление услугами из базы — следующий этап.</p>'}}
-function productEditor(p){modal(p?'Редактировать товар':'Добавить товар',`<form id="productForm"><div class="field"><label>Название *</label><input name="name" value="${esc(p?.name||'')}" required></div><div class="field"><label>Категория *</label><input name="category" value="${esc(p?.category||'Фигурки')}" required></div><div class="field"><label>Цена, ₽ *</label><input name="price" type="number" min="0" step="1" value="${p?.price??''}" required></div><div class="field"><label>Описание</label><textarea name="description">${esc(p?.description||'')}</textarea></div><div class="field"><label>Ссылка на фотографию (https://)</label><input name="image_url" type="url" value="${esc(p?.image_url||'')}"></div><div class="field"><label><input type="checkbox" name="active" style="width:auto" ${p?.active!==false?'checked':''}> Показывать в магазине</label></div><button class="primary full">Сохранить</button></form>`);$('#productForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),v={name:f.get('name'),category:f.get('category'),price:Number(f.get('price')),description:f.get('description'),image_url:f.get('image_url')||null,active:f.has('active')};const {error}=p?await sb.from('products').update(v).eq('id',p.id):await sb.from('products').insert(v);if(error)return notify(error.message);const r=await sb.from('products').select('*').eq('active',true).order('created_at',{ascending:false});if(!r.error)products=r.data;render();notify('Товар сохранён');admin()}}
+
+function productEditor(p) {
+  modal(p ? 'Редактировать товар' : 'Добавить товар', `
+    <form id="productForm">
+      <div class="field">
+        <label>Название *</label>
+        <input name="name" value="${esc(p?.name || '')}" required>
+      </div>
+      <div class="field">
+        <label>Категория *</label>
+        <input name="category" value="${esc(p?.category || 'Фигурки')}" required>
+      </div>
+      <div class="field">
+        <label>Цена, ₽ *</label>
+        <input name="price" type="number" min="0" step="1"
+          value="${p?.price ?? ''}" required>
+      </div>
+      <div class="field">
+        <label>Описание</label>
+        <textarea name="description">${esc(p?.description || '')}</textarea>
+      </div>
+      <div class="field">
+        <label>Фото товара с устройства</label>
+        <input name="photo" type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif">
+        <small>JPG, PNG, WebP или GIF, до 5 МБ</small>
+        ${p?.image_url ? `
+          <img src="${esc(p.image_url)}" alt="Текущее фото"
+            style="display:block;max-width:180px;max-height:160px;
+            object-fit:contain;margin-top:12px;border-radius:12px">
+        ` : ''}
+      </div>
+      <div class="field">
+        <label>
+          <input type="checkbox" name="active" style="width:auto"
+            ${p?.active !== false ? 'checked' : ''}>
+          Показывать в магазине
+        </label>
+      </div>
+      <button class="primary full" type="submit">Сохранить</button>
+    </form>
+  `);
+
+  $('#productForm').onsubmit = async e => {
+    e.preventDefault();
+    const form = e.target;
+    const btn = form.querySelector('[type="submit"]');
+    const f = new FormData(form);
+    btn.disabled = true;
+
+    try {
+      const v = {
+        name: f.get('name'),
+        category: f.get('category'),
+        price: Number(f.get('price')),
+        description: f.get('description'),
+        image_url: p?.image_url || null,
+        active: f.has('active')
+      };
+
+      const photo = f.get('photo');
+
+      if (photo instanceof File && photo.size > 0) {
+        const types = {
+          'image/jpeg': 'jpg',
+          'image/png': 'png',
+          'image/webp': 'webp',
+          'image/gif': 'gif'
+        };
+
+        if (!types[photo.type]) {
+          throw new Error('Выберите JPG, PNG, WebP или GIF');
+        }
+        if (photo.size > 5 * 1024 * 1024) {
+          throw new Error('Файл больше 5 МБ');
+        }
+
+        const path = crypto.randomUUID() + '.' + types[photo.type];
+
+        const { error: uploadError } = await sb.storage
+          .from('product-images')
+          .upload(path, photo, {
+            contentType: photo.type,
+            upsert: false
+          });
+
+        if (uploadError) throw uploadError;
+
+        v.image_url = sb.storage
+          .from('product-images')
+          .getPublicUrl(path).data.publicUrl;
+      }
+
+      const { error } = p
+        ? await sb.from('products').update(v).eq('id', p.id)
+        : await sb.from('products').insert(v);
+
+      if (error) throw error;
+
+      const result = await sb.from('products')
+        .select('*')
+        .eq('active', true)
+        .order('created_at', { ascending: false });
+
+      if (!result.error) products = result.data || [];
+
+      render();
+      notify('Товар сохранён');
+      admin();
+    } catch (err) {
+      notify('Ошибка: ' + (err.message || 'Неизвестная ошибка'));
+    } finally {
+      btn.disabled = false;
+    }
+  };
+}
+
 document.addEventListener('click',e=>{const a=e.target.closest('[data-add]');if(a)add(a.dataset.add);const c=e.target.closest('[data-cat]');if(c){category=c.dataset.cat;render()}const q=e.target.closest('[data-qty]');if(q){cart[q.dataset.qty]=Math.max(0,(cart[q.dataset.qty]||0)+Number(q.dataset.delta));saveCart();showCart()}if(e.target.closest('[data-close]')||e.target.id==='backdrop')close();const svc=e.target.closest('[data-service]');if(svc)orderForm(svc.dataset.service);const tab=e.target.closest('[data-tab]');if(tab){adminTab=tab.dataset.tab;admin()}});$('#search').oninput=render;$('#cartBtn').onclick=showCart;$('#checkoutBtn').onclick=()=>orderForm();$('#adminBtn').onclick=()=>session?admin():login();$('#requestBtn').onclick=()=>orderForm('Индивидуальный проект');$('#menuBtn').onclick=()=>$('#mobileMenu').classList.toggle('hidden');$('#themeBtn').onclick=()=>$('#mobileMenu').classList.toggle('hidden');$('#themeSwatches').innerHTML=Object.entries(themes).map(([id,[color]])=>`<button data-theme="${id}" style="background:${color}" title="${id}"></button>`).join('');document.addEventListener('click',e=>{const t=e.target.closest('[data-theme]');if(t)theme(t.dataset.theme)});document.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'){$('#glow').style.left=e.clientX+'px';$('#glow').style.top=e.clientY+'px'}});init();
