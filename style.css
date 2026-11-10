@@ -69,3 +69,10 @@ body{background:radial-gradient(ellipse at 0 15%,rgba(102,34,183,.16),transparen
  .toast{bottom:90px;width:max-content;max-width:90%;text-align:center}
 }
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Final accessibility and mobile refinements */
+button:focus-visible,a:focus-visible,[role="link"]:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #3ee5d1;outline-offset:3px}
+.product-card{cursor:pointer}.product-content p{display:none!important}
+.product-content h3{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+@media(max-width:650px){.product-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.product-content{padding:11px}.product-content h3{font-size:14px}.product-bottom strong{font-size:16px}.product-visual{height:160px}.product-bottom button{padding:7px 9px}.top{padding-left:14px;padding-right:14px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
