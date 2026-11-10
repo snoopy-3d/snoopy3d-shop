@@ -1,25 +1,8 @@
 import {SUPABASE_URL,SUPABASE_ANON_KEY} from './config.js';
 const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const adminEmail = 'snoopy_3d@bk.ru';
-let products = [];
-let catalogMessage = 'Загружаем каталог…';
-let cart = readCart();
-let category = 'Все', sb = null, session = null, adminTab = 'products';
-let recoveryUserId = null;
-
-function readCart() {
-  try {
-    const saved = JSON.parse(localStorage.getItem('snoopy-cart') || '{}');
-    if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return {};
-    return Object.fromEntries(Object.entries(saved).filter(([, qty]) => Number.isInteger(qty) && qty > 0));
-  } catch {
-    return {};
-  }
-}
-
-function cartEntries() {
-  return Object.entries(cart).filter(([id, qty]) => qty > 0 && products.some(product => String(product.id) === id));
-}
+let products=[], cart=readCart(), category='Все',sb=null,session=null,adminTab='products';
+let catalogMessage='Загружаем каталог…';
+function readCart(){try{const v=JSON.parse(localStorage.getItem('snoopy-cart')||'{}');return v&&typeof v==='object'&&!Array.isArray(v)?Object.fromEntries(Object.entries(v).filter(([,n])=>Number.isInteger(n)&&n>0)):{};}catch{return {}}}
 const themes={purple:['#a85cff','168,92,255'],blue:['#23b9ff','35,185,255'],green:['#31dfaa','49,223,170'],orange:['#ff9c42','255,156,66'],red:['#ff4d79','255,77,121'],white:['#7280e8','114,128,232']};
 function theme(t){const [accent,rgb]=themes[t]||themes.purple;document.documentElement.style.setProperty('--accent',accent);document.documentElement.style.setProperty('--rgb',rgb);document.documentElement.style.setProperty('--bg',t==='white'?'#f3f3fa':'#0a0913');document.documentElement.style.setProperty('--panel',t==='white'?'#ffffff':'#171426');document.documentElement.style.setProperty('--panel2',t==='white'?'#e9e9f7':'#201a32');document.documentElement.style.setProperty('--text',t==='white'?'#171327':'#f8f5ff');document.documentElement.style.setProperty('--muted',t==='white'?'#625c72':'#aaa4bd');document.documentElement.style.setProperty('--border',t==='white'?'#d2cbe0':'#39304e');localStorage.setItem('snoopy-theme',t)}
 theme(localStorage.getItem('snoopy-theme')||'purple');
@@ -27,173 +10,46 @@ const money=n=>new Intl.NumberFormat('ru-RU').format(n)+' ₽';
 function notify(s){$('#toast').textContent=s;$('#toast').classList.remove('hidden');setTimeout(()=>$('#toast').classList.add('hidden'),3500)}
 function saveCart(){localStorage.setItem('snoopy-cart',JSON.stringify(cart));$('#count').textContent=Object.values(cart).reduce((a,b)=>a+b,0)}
 function galleryImages(p){const a=Array.isArray(p?.images)?p.images.filter(x=>typeof x==='string'&&x.startsWith('https://')):[];return a.length?a:(p?.image_url?[p.image_url]:[])}
-function render(){const cats=['Все',...new Set(products.map(p=>p.category))];$('#categories').innerHTML=cats.map(c=>`<button class="${category===c?'active':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('');const q=$('#search').value.toLowerCase();$('#products').innerHTML=products.filter(p=>(category==='Все'||p.category===category)&&p.name.toLowerCase().includes(q)).map(p=>{const images=galleryImages(p);return `<article class="product-card"><div class="product-visual">${images.length?`<img src="${esc(images[0])}" alt="${esc(p.name)}" loading="lazy" data-photo-gallery="${esc(p.id)}" style="cursor:pointer">${images.length>1?`<span style="position:absolute;right:8px;bottom:8px;background:#151324e6;color:white;border-radius:8px;padding:4px 8px;font-size:12px;pointer-events:none">📷 ${images.length}</span>`:''}`:esc(p.emoji||'⬡')}<span class="tag">${esc(p.category)}</span></div><div class="product-content"><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p><div class="product-bottom"><strong>${money(p.price)}</strong><button data-add="${esc(p.id)}" aria-label="Добавить в корзину">🛒 +</button></div></div></article>`}).join('')||`<p>${catalogMessage || 'Товары не найдены'}</p>`}
+function render(){
+ const cats=['Все',...new Set(products.map(p=>p.category).filter(Boolean))];
+ $('#categories').innerHTML=cats.map(c=>`<button class="${category===c?'active':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('');
+ const q=$('#search').value.toLowerCase().trim();
+ const matches=products.filter(p=>(category==='Все'||p.category===category)&&p.name.toLowerCase().includes(q));
+ $('#products').innerHTML=matches.map(p=>{const images=galleryImages(p);return `<article class="product-card" data-open-product="${esc(p.id)}" tabindex="0" role="link" aria-label="Подробнее о ${esc(p.name)}"><div class="product-visual">${images.length?`<img src="${esc(images[0])}" alt="${esc(p.name)}" loading="lazy">`:esc(p.emoji||'⬡')}<span class="tag">${esc(p.category)}</span>${images.length>1?`<span class="photo-count">◉ ${images.length}</span>`:''}</div><div class="product-content"><h3>${esc(p.name)}</h3><div class="product-bottom"><strong>${money(p.price)}</strong><button data-add="${esc(p.id)}" aria-label="Добавить в корзину">＋</button></div><span class="product-more">Подробнее →</span></div></article>`}).join('')||`<p class="catalog-empty">${esc(catalogMessage||'Товары не найдены')}</p>`;
+}
+function productDetail(id){const p=products.find(x=>String(x.id)===String(id));if(!p)return;const photos=galleryImages(p);let active=0;
+ const gallery=()=>`<div class="detail-photo">${photos.length?`<img id="detailMainPhoto" src="${esc(photos[active])}" alt="${esc(p.name)}">`:`<span class="empty-photo">${esc(p.emoji||'⬡')}</span>`}</div>${photos.length>1?`<div class="detail-thumbs">${photos.map((src,i)=>`<button type="button" data-detail-image="${i}" class="${i===active?'selected':''}"><img src="${esc(src)}" alt="Фото ${i+1}"></button>`).join('')}</div>`:''}`;
+ modal(p.name,`<div class="detail-layout"><div id="detailGallery">${gallery()}</div><div class="detail-info"><span class="detail-category">${esc(p.category)}</span><h3>${esc(p.name)}</h3><strong class="detail-price">${money(p.price)}</strong><p class="detail-description">${esc(p.description||'Описание уточняется у студии.').replace(/\n/g,'<br>')}</p><p class="note">Стоимость и сроки согласовываются после оформления заявки.</p><button class="primary full" data-add="${esc(p.id)}">🛒 Добавить в корзину</button></div></div>`);
+ $('#modal').classList.add('product-modal');
+ $('#modal').querySelectorAll('[data-detail-image]').forEach(btn=>btn.onclick=()=>{active=Number(btn.dataset.detailImage);$('#detailGallery').innerHTML=gallery();$('#detailGallery').querySelectorAll('[data-detail-image]').forEach(b=>b.onclick=()=>productDetailImage(Number(b.dataset.detailImage)));});
+ function productDetailImage(n){active=n;$('#detailGallery').innerHTML=gallery();$('#detailGallery').querySelectorAll('[data-detail-image]').forEach(b=>b.onclick=()=>productDetailImage(Number(b.dataset.detailImage)));}
+}
 function add(id){cart[id]=(cart[id]||0)+1;saveCart();notify('Добавлено в корзину')}
-function showCart(){const entries=cartEntries();$('#cartItems').innerHTML=entries.map(([id,n])=>{const p=products.find(p=>String(p.id)===id);return `<div class="cart-row"><div><b>${esc(p.name)}</b><br><small>${money(p.price)} × ${n}</small></div><div><button data-qty="${esc(id)}" data-delta="-1">−</button> ${n} <button data-qty="${esc(id)}" data-delta="1">+</button></div></div>`}).join('')||'<p>Корзина пуста</p>';$('#total').textContent=money(entries.reduce((s,[id,n])=>s+products.find(p=>String(p.id)===id).price*n,0));openDrawer()}
+function showCart(){const entries=Object.entries(cart).filter(([id,n])=>n>0&&products.some(p=>String(p.id)===id));$('#cartItems').innerHTML=entries.map(([id,n])=>{const p=products.find(p=>String(p.id)===id);return `<div class="cart-row"><div><b>${esc(p.name)}</b><br><small>${money(p.price)} × ${n}</small></div><div><button data-qty="${esc(id)}" data-delta="-1">−</button> ${n} <button data-qty="${esc(id)}" data-delta="1">+</button></div></div>`}).join('')||'<p>Корзина пуста</p>';$('#total').textContent=money(entries.reduce((s,[id,n])=>s+products.find(p=>String(p.id)===id).price*n,0));openDrawer()}
 function openDrawer(){$('#drawer').classList.remove('hidden');$('#backdrop').classList.remove('hidden')}
-function close(){['#drawer','#modal','#backdrop'].forEach(s=>$(s).classList.add('hidden'))}
+function close(){['#drawer','#modal','#backdrop'].forEach(s=>$(s).classList.add('hidden'));$('#modal').classList.remove('product-modal')}
 function modal(title,html){$('#modal').innerHTML=`<div class="modal-head"><h2>${esc(title)}</h2><button data-close aria-label="Закрыть">✕</button></div>${html}`;$('#modal').classList.remove('hidden');$('#backdrop').classList.remove('hidden')}
 function showProductGallery(id){const p=products.find(x=>String(x.id)===String(id));if(!p)return;const photos=galleryImages(p);if(!photos.length)return;let n=0;modal(p.name,'<div id="productGallery"></div>');function draw(){const root=$('#productGallery');root.innerHTML=`<img src="${esc(photos[n])}" alt="${esc(p.name)}" style="width:100%;max-height:60vh;object-fit:contain;border-radius:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0;gap:8px"><button type="button" id="photoPrev">❮</button><span>${n+1} / ${photos.length}</span><button type="button" id="photoNext">❯</button></div><div style="display:flex;gap:8px;flex-wrap:wrap">${photos.map((url,i)=>`<button type="button" data-photo-index="${i}" style="padding:2px;border:2px solid ${i===n?'var(--accent)':'transparent'};border-radius:9px"><img src="${esc(url)}" alt="Фото ${i+1}" style="width:62px;height:62px;object-fit:cover;border-radius:7px"></button>`).join('')}</div>`;$('#photoPrev').onclick=()=>{n=(n+photos.length-1)%photos.length;draw()};$('#photoNext').onclick=()=>{n=(n+1)%photos.length;draw()};root.querySelectorAll('[data-photo-index]').forEach(btn=>btn.onclick=()=>{n=Number(btn.dataset.photoIndex);draw()})}draw()}
-function contactFields(){return `<div class="field"><label>Email покупателя *</label><input name="email" type="email" required maxlength="200" placeholder="you@example.ru"></div><div class="field"><label>Имя (необязательно)</label><input name="name" maxlength="120"></div><div class="field"><label>Телефон (необязательно)</label><input name="phone" type="tel" maxlength="50"></div><div class="field"><label>Telegram (необязательно)</label><input name="telegram" maxlength="100" placeholder="@username"></div><div class="field"><label>Комментарий</label><textarea name="comment" maxlength="2000"></textarea></div><label class="note"><input type="checkbox" required style="width:auto"> Согласен(на) на обработку данных для выполнения заявки</label>`}
-function orderForm(service=''){close();const items=cartEntries();if(!service&&!items.length)return notify('Корзина пуста');modal(service?'Заказать услугу':'Оформление заказа',`<form id="orderForm">${service?`<p>Услуга: <b>${esc(service)}</b></p><div class="field"><label>Описание задачи</label><textarea name="task" required maxlength="3000"></textarea></div><div class="field"><label>Ссылка на фото или файл (необязательно)</label><input name="file_link" type="url" placeholder="https://..."></div>`:`<p>${items.map(([id,n])=>esc(products.find(p=>String(p.id)===id).name)+' × '+n).join('<br>')}</p><p><b>Предварительно: ${money(items.reduce((s,[id,n])=>s+products.find(p=>String(p.id)===id).price*n,0))}</b></p>`}${contactFields()}<p class="note">Оплата и сроки согласовываются лично после заявки. Данные не отправляются до нажатия кнопки.</p><button class="primary full" type="submit">Отправить заявку</button></form>`);$('#orderForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const btn=e.target.querySelector('[type=submit]');btn.disabled=true;try{if(!sb)throw Error('Приём заказов ещё не подключён. Настройте Supabase и серверную функцию.');const payload={email:f.get('email'),name:f.get('name'),phone:f.get('phone'),telegram:f.get('telegram'),comment:f.get('comment'),service:service||null,task:f.get('task')||null,file_link:f.get('file_link')||null,items:service?[]:items.map(([id,qty])=>({id,qty}))};const {data,error}=await sb.functions.invoke('place-order',{body:payload});if (error) {
-  const response = error.context instanceof Response ? await error.context.json().catch(() => null) : null;
-  throw new Error(response?.error || 'Не удалось отправить заявку. Проверьте подключение и попробуйте ещё раз.');
-}
-if (data?.error || !data?.order_number) throw new Error(data?.error || 'Сервер не вернул номер заявки.');
-if(!service){cart={};saveCart()}close();notify(`Заявка ${data?.order_number||''} принята!`)}catch(err){notify(err.message||'Ошибка отправки')}finally{btn.disabled=false}}}
-async function init() {
-  render();
-  const expiredLink = new URLSearchParams(location.hash.slice(1)).get('error_code') === 'otp_expired';
-  try {
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) throw new Error('Supabase is not configured');
-    const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-    sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    sb.auth.onAuthStateChange((event, nextSession) => {
-      session = nextSession;
-      if (session?.user.id !== recoveryUserId) recoveryUserId = null;
-      if (event === 'PASSWORD_RECOVERY' && session?.user.email?.toLowerCase() === adminEmail) {
-        recoveryUserId = session.user.id;
-        passwordResetForm();
-      }
-    });
-    if (expiredLink) {
-      history.replaceState(null, '', location.pathname + location.search);
-      login();
-      notify('Ссылка восстановления истекла. Запросите новую.');
-    }
-    const { data: authData, error: authError } = await sb.auth.getSession();
-    if (!authError) session = authData.session;
-    const { data, error } = await sb.from('products').select('*').eq('active', true).order('created_at', { ascending: false });
-    if (error) throw error;
-    products = data || [];
-    catalogMessage = '';
-    cart = Object.fromEntries(cartEntries());
-  } catch (error) {
-    catalogMessage = 'Не удалось загрузить каталог. Обновите страницу.';
-    console.warn('Каталог недоступен', error);
-  }
-  render();
-  saveCart();
-}
-function passwordResetForm() {
-  if (!recoveryUserId || session?.user.id !== recoveryUserId) return login();
-  close();
-  modal('Новый пароль SUPER ADMIN', `<p class="note">Установите новый пароль для ${adminEmail}.</p>
-    <form id="passwordResetForm">
-      <div class="field"><label for="newPassword">Новый пароль</label><input id="newPassword" name="password" type="password" autocomplete="new-password" minlength="8" required></div>
-      <div class="field"><label for="confirmPassword">Повторите пароль</label><input id="confirmPassword" name="confirmation" type="password" autocomplete="new-password" minlength="8" required></div>
-      <p class="note" role="status"></p>
-      <button class="primary full">Сохранить пароль</button>
-    </form>`);
-  $('#passwordResetForm').onsubmit = async event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const fields = new FormData(form);
-    const message = form.querySelector('[role="status"]');
-    const password = String(fields.get('password'));
-    if (!recoveryUserId || session?.user.id !== recoveryUserId) {
-      message.textContent = 'Сеанс восстановления истёк. Откройте новую ссылку.';
-      return;
-    }
-    if (password !== fields.get('confirmation')) {
-      message.textContent = 'Пароли не совпадают.';
-      return;
-    }
-    const button = form.querySelector('button');
-    button.disabled = true;
-    message.textContent = '';
-    try {
-      const { error } = await sb.auth.updateUser({ password });
-      if (error) {
-        message.textContent = error.code === 'same_password' || error.code === 'weak_password'
-          ? 'Выберите другой, более надёжный пароль.'
-          : 'Не удалось сохранить пароль. Проверьте срок действия ссылки восстановления.';
-        return;
-      }
-    } catch {
-      message.textContent = 'Не удалось связаться с Supabase. Попробуйте ещё раз.';
-      return;
-    } finally {
-      button.disabled = false;
-    }
-    recoveryUserId = null;
-    await sb.auth.signOut({ scope: 'local' }).catch(() => {});
-    session = null;
-    login();
-    notify('Пароль сохранён. Войдите с новым паролем.');
-  };
-}
-
-function login() {
-  modal('SUPER ADMIN', `<p class="note">Вход для ${adminEmail}. Используйте пароль сайта.</p>
-    <form id="loginForm">
-      <div class="field"><label for="adminEmail">Email</label><input id="adminEmail" type="email" name="email" value="${adminEmail}" autocomplete="username" required></div>
-      <div class="field"><label for="adminPassword">Пароль сайта</label><input id="adminPassword" type="password" name="password" autocomplete="current-password" required></div>
-      <button class="primary full">Войти</button>
-    </form>`);
-  $('#loginForm').onsubmit = async event => {
-    event.preventDefault();
-    if (!sb) return notify('Подключение к магазину недоступно. Обновите страницу.');
-    const form = event.currentTarget;
-    const fields = new FormData(form);
-    const button = form.querySelector('button');
-    button.disabled = true;
-    try {
-      const { data, error } = await sb.auth.signInWithPassword({
-        email: String(fields.get('email')).trim().toLowerCase(),
-        password: String(fields.get('password')),
-      });
-      if (error || !data.session) return notify('Не удалось войти. Проверьте адрес и пароль сайта.');
-      session = data.session;
-      await admin();
-    } finally {
-      button.disabled = false;
-    }
-  };
-}
-async function admin() {
-  if (!sb || !session) return login();
-  const { data: allowed, error } = await sb.rpc('is_admin');
-  if (error) return notify('Не удалось проверить права администратора. Попробуйте ещё раз.');
-  if (!allowed) {
-    await sb.auth.signOut({ scope: 'local' });
-    session = null;
-    login();
-    return notify('Нет прав администратора');
-  }
-  modal('SNOOPY3D · SUPER ADMIN',`<div class="admin-tabs"><button data-tab="products" class="${adminTab==='products'?'active':''}">Товары</button><button data-tab="orders" class="${adminTab==='orders'?'active':''}">Заказы</button><button data-tab="services" class="${adminTab==='services'?'active':''}">Услуги</button><button id="logout">Выход</button></div><div id="adminContent">Загрузка...</div>`);$('#logout').onclick=async()=>{await sb.auth.signOut();session=null;close()};loadAdmin()}
-function orderDetails(order) {
-  const items = Array.isArray(order.items) ? order.items : [];
-  const lines = order.service ? [
-    order.service,
-    order.task && `Задача: ${order.task}`,
-    order.file_link && `Файл: ${order.file_link}`,
-  ] : [
-    ...items.filter(item => item?.id).map(item => {
-      const product = products.find(product => String(product.id) === String(item.id));
-      return `${item.name || product?.name || item.id} × ${item.qty}`;
-    }),
-    `Сумма: ${money(order.total)}`,
-  ];
-  if (order.comment) lines.push(`Комментарий: ${order.comment}`);
-  return lines.filter(Boolean).map(line => `<small style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(line)}</small>`).join('<br>');
-}
-
-async function loadAdmin(){if(adminTab==='products'){const {data,error}=await sb.from('products').select('*').order('created_at',{ascending:false});if(error)return $('#adminContent').textContent='Нет доступа';$('#adminContent').innerHTML=`<button class="primary" id="newProduct">+ Добавить товар</button>${(data||[]).map(p=>`<div class="admin-row"><span>${esc(p.name)} · ${money(p.price)} ${p.active?'':'(скрыт)'}</span><div><button data-edit="${esc(p.id)}">Изменить</button> <button data-delete="${esc(p.id)}">Удалить</button></div></div>`).join('')}`;$('#newProduct').onclick=()=>productEditor();$('#adminContent').querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{const p=data.find(p=>String(p.id)===b.dataset.delete);if(!p||!confirm('Удалить товар «'+p.name+'»?'))return;const {error}=await sb.from('products').delete().eq('id',p.id);if(error)return notify('Ошибка удаления: '+error.message);products=products.filter(x=>String(x.id)!==String(p.id));render();loadAdmin()});$('#adminContent').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>productEditor(data.find(p=>String(p.id)===b.dataset.edit)))}else if(adminTab==='orders'){const {data,error}=await sb.from('orders').select('*').order('created_at',{ascending:false}).limit(100);if(error)return $('#adminContent').textContent='Нет доступа';$('#adminContent').innerHTML=(data||[]).map(o=>`<div class="admin-row"><div><b>${esc(o.order_number)}</b> · ${esc(o.email)}<br><small>${esc(o.name||'Без имени')} · ${esc(o.phone||'')} · ${esc(o.telegram||'')}</small><br>${orderDetails(o)}</div><select data-order="${esc(o.id)}">${['Новый','Согласование','В работе','Готов','Завершён','Отменён'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}</select></div>`).join('')||'Заказов пока нет';$('#adminContent').querySelectorAll('[data-order]').forEach(el=>el.onchange=async()=>{const order = data.find(order => String(order.id) === el.dataset.order);
-if (!order) return;
-const status = el.value;
-el.disabled = true;
-try {
-  const { data: saved, error } = await sb.from('orders').update({ status }).eq('id', order.id).select('id').maybeSingle();
-  if (error || !saved) {
-    el.value = order.status;
-    return notify('Не удалось обновить статус');
-  }
-  order.status = status;
-  notify('Статус сохранён');
-} finally {
-  el.disabled = false;
-}})}else{$('#adminContent').innerHTML='<p>Услуги редактируются в исходном шаблоне. Управление услугами из базы — следующий этап.</p>'}}
+function contactFields(){return `<div class="field"><label>Электронная почта *</label><input name="email" type="email" required maxlength="200" placeholder="name@example.ru"></div><div class="field"><label>Имя (необязательно)</label><input name="name" maxlength="120"></div><div class="field"><label>Телефон (необязательно)</label><input name="phone" type="tel" maxlength="50"></div><div class="field"><label>Telegram (необязательно)</label><input name="telegram" maxlength="100" placeholder="@username"></div><div class="field"><label>Комментарий</label><textarea name="comment" maxlength="2000"></textarea></div><label class="note"><input type="checkbox" required style="width:auto"> Согласен(на) на обработку данных для выполнения заявки</label>`}
+function orderForm(service=''){close();const items=Object.entries(cart).filter(([id,n])=>n>0&&products.some(p=>String(p.id)===id));if(!service&&!items.length)return notify('Корзина пуста');modal(service?'Заказать услугу':'Оформление заказа',`<form id="orderForm">${service?`<p>Услуга: <b>${esc(service)}</b></p><div class="field"><label>Описание задачи</label><textarea name="task" required maxlength="3000"></textarea></div><div class="field"><label>Ссылка на фото или файл (необязательно)</label><input name="file_link" type="url" placeholder="https://..."></div>`:`<p>${items.map(([id,n])=>esc(products.find(p=>String(p.id)===id).name)+' × '+n).join('<br>')}</p><p><b>Предварительно: ${money(items.reduce((s,[id,n])=>s+products.find(p=>String(p.id)===id).price*n,0))}</b></p>`}${contactFields()}<p class="note">Оплата и сроки согласовываются лично после заявки. Данные не отправляются до нажатия кнопки.</p><button class="primary full" type="submit">Отправить заявку</button></form>`);$('#orderForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const btn=e.target.querySelector('[type=submit]');btn.disabled=true;try{if(!sb)throw Error('Приём заказов ещё не подключён. Настройте Supabase и серверную функцию.');const payload={email:f.get('email'),name:f.get('name'),phone:f.get('phone'),telegram:f.get('telegram'),comment:f.get('comment'),service:service||null,task:f.get('task')||null,file_link:f.get('file_link')||null,items:service?[]:items.map(([id,qty])=>({id,qty}))};const {data,error}=await sb.functions.invoke('place-order',{body:payload});if(error)throw error;if(data?.error)throw Error(data.error);if(!data?.order_number)throw Error('Сервер не вернул номер заявки');if(!service){cart={};saveCart()}close();try{localStorage.setItem('snoopy-last-order',String(data.order_number))}catch{}notify(`Заявка ${data.order_number} принята!`)}catch(err){notify(err.message||'Ошибка отправки')}finally{btn.disabled=false}}}
+async function init(){render();saveCart();if(SUPABASE_URL&&SUPABASE_ANON_KEY){try{const {createClient}=await import('https://esm.sh/@supabase/supabase-js@2');sb=createClient(SUPABASE_URL,SUPABASE_ANON_KEY);const {data,error}=await sb.from('products').select('*').eq('active',true).order('created_at',{ascending:false});if(error)throw error;products=data||[];catalogMessage='';const auth=await sb.auth.getSession();session=auth.data.session;}catch(e){console.warn('Ошибка каталога:',e);catalogMessage='Не удалось загрузить каталог. Попробуйте обновить страницу.';}}else catalogMessage='Каталог пока не подключён.';render();saveCart();route();}
+function login(){modal('SUPER ADMIN',`<p class="note">Вход для администратора. Используйте почту, указанную в Supabase Auth.</p><form id="loginForm"><div class="field"><label>Почта</label><input type="email" name="email" value="snoopy_3d@bk.ru" required></div><div class="field"><label>Пароль сайта</label><input type="password" name="password" required></div><button class="primary full">Войти</button></form>`);$('#loginForm').onsubmit=async e=>{e.preventDefault();if(!sb)return notify('Сначала подключите Supabase');const f=new FormData(e.target);const {data,error}=await sb.auth.signInWithPassword({email:f.get('email'),password:f.get('password')});if(error)return notify('Ошибка входа');session=data.session;admin()}}
+async function admin(){if(!sb||!session)return login();const {data:allowed}=await sb.rpc('is_admin');if(!allowed)return notify('Нет прав администратора');modal('SNOOPY3D · SUPER ADMIN',`<div class="admin-tabs"><button data-tab="products" class="${adminTab==='products'?'active':''}">Товары</button><button data-tab="orders" class="${adminTab==='orders'?'active':''}">Заказы</button><button data-tab="services" class="${adminTab==='services'?'active':''}">Услуги</button><button id="logout">Выход</button></div><div id="adminContent">Загрузка...</div>`);$('#logout').onclick=async()=>{await sb.auth.signOut();session=null;close()};loadAdmin()}
+async function loadAdmin(){if(adminTab==='products'){const {data,error}=await sb.from('products').select('*').order('created_at',{ascending:false});if(error)return $('#adminContent').textContent='Нет доступа';$('#adminContent').innerHTML=`<button class="primary" id="newProduct">+ Добавить товар</button>${(data||[]).map(p=>`<div class="admin-row"><span>${esc(p.name)} · ${money(p.price)} ${p.active?'':'(скрыт)'}</span><div><button data-edit="${esc(p.id)}">Изменить</button> <button data-delete="${esc(p.id)}">Удалить</button></div></div>`).join('')}`;$('#newProduct').onclick=()=>productEditor();$('#adminContent').querySelectorAll('[data-delete]').forEach(b=>b.onclick=async()=>{const p=data.find(p=>String(p.id)===b.dataset.delete);if(!p||!confirm('Удалить товар «'+p.name+'»?'))return;const {error}=await sb.from('products').delete().eq('id',p.id);if(error)return notify('Ошибка удаления: '+error.message);products=products.filter(x=>String(x.id)!==String(p.id));render();loadAdmin()});$('#adminContent').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>productEditor(data.find(p=>String(p.id)===b.dataset.edit)))}else if(adminTab==='orders'){const {data,error}=await sb.from('orders').select('*').order('created_at',{ascending:false}).limit(100);if(error)return $('#adminContent').textContent='Нет доступа';$('#adminContent').innerHTML=(data||[]).map(o=>{const details=o.service?`<div><b>Услуга:</b> ${esc(o.service)}</div><div><b>Задача:</b> ${esc(o.task||'—')}</div>${o.file_link?`<div><b>Файл:</b> ${esc(o.file_link)}</div>`:''}`:`<div><b>Товары:</b> ${(Array.isArray(o.items)?o.items:[]).map(i=>esc(i.name||i.id)+' × '+Number(i.qty||1)).join(', ')||'—'}</div><div><b>Сумма:</b> ${money(o.total||0)}</div>`;return `<div class="admin-row"><div><b>${esc(o.order_number)}</b> · ${esc(o.email)}<br><small>${esc(o.name||'Без имени')} · ${esc(o.phone||'')} · ${esc(o.telegram||'')}</small>${details}<div><small>${esc(o.comment||'')}</small></div></div><select data-order="${esc(o.id)}">${['Новый','Согласование','В работе','Готов','Завершён','Отменён'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}</select></div>`}).join('')||'Заказов пока нет';$('#adminContent').querySelectorAll('[data-order]').forEach(el=>el.onchange=async()=>{const {error}=await sb.from('orders').update({status:el.value}).eq('id',el.dataset.order);notify(error?'Не удалось обновить':'Статус сохранён')})}else{$('#adminContent').innerHTML='<p>Услуги редактируются в исходном шаблоне. Управление услугами из базы — следующий этап.</p>'}}
 function productEditor(p){let existing=galleryImages(p),pending=[],cover=existing[0]||null;const maxPhotos=12;modal(p?'Редактировать товар':'Добавить товар',`<form id="productForm"><div class="field"><label>Название *</label><input name="name" value="${esc(p?.name||'')}" required></div><div class="field"><label>Категория *</label><input name="category" value="${esc(p?.category||'Фигурки')}" required></div><div class="field"><label>Цена, ₽ *</label><input name="price" type="number" min="0" step="1" value="${p?.price??''}" required></div><div class="field"><label>Описание</label><textarea name="description">${esc(p?.description||'')}</textarea></div><div class="field"><label>Фотографии товара с устройства</label><input name="photos" type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif"><small>До 12 фотографий, каждая до 5 МБ. Выбирайте несколько сразу или добавляйте по очереди.</small><div id="galleryPreview" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;margin-top:14px"></div></div><div class="field"><label><input type="checkbox" name="active" style="width:auto" ${p?.active!==false?'checked':''}> Показывать в магазине</label></div><button class="primary full" type="submit">Сохранить</button></form>`);const fileInput=$('#productForm [name="photos"]');function preview(){const entries=[...existing.map(url=>({url,kind:'old'})),...pending.map(x=>({url:x.url,kind:'new'}))];if(!entries.some(x=>x.url===cover))cover=entries[0]?.url||null;$('#galleryPreview').innerHTML=entries.map((x,i)=>`<div style="background:var(--panel2);border-radius:12px;padding:6px;text-align:center"><img src="${esc(x.url)}" alt="Фото ${i+1}" style="width:100%;height:85px;object-fit:cover;border-radius:8px"><button type="button" data-cover-photo="${i}" style="font-size:12px;padding:4px">${x.url===cover?'★ Главное':'☆ Главное'}</button><button type="button" data-remove-photo="${i}" style="font-size:12px;padding:4px;color:#ff7895">✕ Убрать</button></div>`).join('')||'<small>Добавьте фотографии</small>';$('#galleryPreview').querySelectorAll('[data-cover-photo]').forEach(b=>b.onclick=()=>{cover=entries[Number(b.dataset.coverPhoto)].url;preview()});$('#galleryPreview').querySelectorAll('[data-remove-photo]').forEach(b=>b.onclick=()=>{const x=entries[Number(b.dataset.removePhoto)];if(x.kind==='old')existing=existing.filter(url=>url!==x.url);else{const i=pending.findIndex(y=>y.url===x.url);if(i!==-1){URL.revokeObjectURL(pending[i].url);pending.splice(i,1)}}preview()})}fileInput.onchange=()=>{const files=[...fileInput.files];if(existing.length+pending.length+files.length>maxPhotos){notify('Максимум 12 фотографий');fileInput.value='';return}for(const file of files){if(!['image/jpeg','image/png','image/webp','image/gif'].includes(file.type)||file.size>5*1024*1024){notify('Нужны JPG, PNG, WebP или GIF до 5 МБ');continue}pending.push({file,url:URL.createObjectURL(file)})}fileInput.value='';preview()};preview();$('#productForm').onsubmit=async e=>{e.preventDefault();const form=e.target,btn=form.querySelector('[type="submit"]'),f=new FormData(form);btn.disabled=true;try{if(!sb)throw Error('Нет подключения к Supabase');const uploaded=[];for(const x of pending){const ext=({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif'})[x.file.type],path=crypto.randomUUID()+'.'+ext;const {error}=await sb.storage.from('product-images').upload(path,x.file,{contentType:x.file.type,upsert:false});if(error)throw error;uploaded.push({url:sb.storage.from('product-images').getPublicUrl(path).data.publicUrl,local:x.url})}let images=[...existing,...uploaded.map(x=>x.url)];const main=uploaded.find(x=>x.local===cover)?.url||cover;if(images.includes(main))images=[main,...images.filter(x=>x!==main)];const v={name:f.get('name'),category:f.get('category'),price:Number(f.get('price')),description:f.get('description'),images,image_url:images[0]||null,active:f.has('active')};const {error}=p?await sb.from('products').update(v).eq('id',p.id):await sb.from('products').insert(v);if(error)throw error;const result=await sb.from('products').select('*').eq('active',true).order('created_at',{ascending:false});if(!result.error)products=result.data||[];render();notify('Товар и фотографии сохранены');admin()}catch(err){notify('Ошибка: '+(err.message||'Неизвестная ошибка'))}finally{btn.disabled=false}}}
 document.addEventListener('click',e=>{const image=e.target.closest('[data-photo-gallery]');if(image)showProductGallery(image.dataset.photoGallery);const a=e.target.closest('[data-add]');if(a)add(a.dataset.add);const c=e.target.closest('[data-cat]');if(c){category=c.dataset.cat;render()}const q=e.target.closest('[data-qty]');if(q){cart[q.dataset.qty]=Math.max(0,(cart[q.dataset.qty]||0)+Number(q.dataset.delta));saveCart();showCart()}if(e.target.closest('[data-close]')||e.target.id==='backdrop')close();const svc=e.target.closest('[data-service]');if(svc)orderForm(svc.dataset.service);const tab=e.target.closest('[data-tab]');if(tab){adminTab=tab.dataset.tab;admin()}});
-$('#search').oninput=render;$('#cartBtn').onclick=showCart;$('#checkoutBtn').onclick=()=>orderForm();$('#adminBtn').onclick=()=>recoveryUserId?passwordResetForm():session?admin():login();$('#requestBtn').onclick=()=>orderForm('Индивидуальный проект');$('#menuBtn').onclick=()=>$('#mobileMenu').classList.toggle('hidden');$('#themeBtn').onclick=()=>$('#mobileMenu').classList.toggle('hidden');$('#themeSwatches').innerHTML=Object.entries(themes).map(([id,[color]])=>`<button data-theme="${id}" style="background:${color}" title="${id}"></button>`).join('');document.addEventListener('click',e=>{const t=e.target.closest('[data-theme]');if(t)theme(t.dataset.theme)});document.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'){$('#glow').style.left=e.clientX+'px';$('#glow').style.top=e.clientY+'px'}});init();
+$('#search').oninput=render;$('#cartBtn').onclick=showCart;$('#checkoutBtn').onclick=()=>orderForm();$('#adminBtn').onclick=()=>session?admin():login();$('#requestBtn').onclick=()=>orderForm('Индивидуальный проект');$('#menuBtn').onclick=()=>$('#mobileMenu').classList.toggle('hidden');$('#themeBtn').onclick=()=>$('#mobileMenu').classList.toggle('hidden');$('#themeSwatches').innerHTML=Object.entries(themes).map(([id,[color]])=>`<button data-theme="${id}" style="background:${color}" title="${id}"></button>`).join('');document.addEventListener('click',e=>{const t=e.target.closest('[data-theme]');if(t)theme(t.dataset.theme)});document.addEventListener('pointermove',e=>{if(e.pointerType==='mouse'){$('#glow').style.left=e.clientX+'px';$('#glow').style.top=e.clientY+'px'}});init();
+
+// Client-side navigation: independent pages without changing existing Supabase endpoints.
+function route(){const page=location.hash.slice(1).split('?')[0]||'home';const valid=['home','catalog','services','orders','about','contacts'];const current=valid.includes(page)?page:'home';
+ document.querySelectorAll('[data-page]').forEach(el=>{el.classList.toggle('page-hidden',el.dataset.page!==current)});
+ const intro=$('#pageIntro');if(current==='catalog'){intro.classList.remove('hidden');intro.innerHTML='<span class="eyebrow">КАТАЛОГ SNOOPY3D</span><h1>Магазин 3D-моделей</h1><p>Готовые изделия, конструкторы и полезные вещи для дома.</p>';}else{intro.classList.add('hidden');intro.innerHTML='';}
+ document.querySelectorAll('.top nav a,.mobile-menu a,.bottom-nav a').forEach(el=>{el.classList.toggle('current',el.getAttribute('href')==='#'+current)});
+ $('#mobileMenu').classList.add('hidden');window.scrollTo({top:0,behavior:'instant'});
+}
+window.addEventListener('hashchange',route);
+document.addEventListener('click',e=>{const product=e.target.closest('[data-open-product]');if(product&&!e.target.closest('[data-add]'))productDetail(product.dataset.openProduct);});
+document.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target.matches('[data-open-product]')){e.preventDefault();productDetail(e.target.dataset.openProduct)}});
+$('#bottomCart').onclick=showCart;
+$('#orderCheck').onclick=()=>{const n=$('#orderNumber').value.trim();$('#orderHelp').textContent=n?'Для уточнения статуса заказа '+n+' напишите нам в Telegram @snoopy_3D или на snoopy_3d@bk.ru.':'Введите номер заказа из подтверждения.';};
+try{$('#orderNumber').value=localStorage.getItem('snoopy-last-order')||''}catch{}
