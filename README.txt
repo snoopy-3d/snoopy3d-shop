@@ -1,11 +1,9 @@
-SNOOPY3D SHOP — исправление перехода «Моделируй» и мобильного звука.
+SNOOPY3D SHOP — ROBOT / MECHA SOUND PACK
 
-Загрузите все файлы из ZIP в КОРЕНЬ репозитория snoopy3d-shop через GitHub (заменить одноимённые). Не загружайте ZIP как один файл.
+1. Replace sound.js in the root of snoopy-3d/snoopy3d-shop with this file.
+2. In index.html replace sound.js?v=20261110b with sound.js?v=20261110-mecha (or change any current sound.js query version).
+3. Commit changes. Refresh the site on your phone.
+4. Tap the musical-note icon, enable sound, select Mecha Transform / Servo Mechanics / Energon Pulse, and press Test Sound.
 
-Моделируй сам теперь ведёт непосредственно на главную SNOOPY3D Studio. В Studio пользователь выбирает «Генераторы»; точный прямой URL раздела не подтверждён.
-
-Звуки по умолчанию ВЫКЛЮЧЕНЫ. На телефоне нажмите значок ♩ в шапке → «Включить звуки» → «Проверить звук». Громкость регулируется отдельно. Учитывайте системную громкость и бесшумный режим.
-
-Код Supabase, корзины, заказов, админ-панели и тема Neon Glass не менялись.
-
-Проверено: синтаксис JS и состав архива. Реальный запуск на Android/iPhone и работа опубликованного GitHub Pages не подтверждены.
+All sounds are original procedural Web Audio synthesis, NOT original Transformers film audio.
+Existing shop logic, Supabase and CSS are untouched.
